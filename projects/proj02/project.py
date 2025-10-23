@@ -35,7 +35,22 @@ warnings.filterwarnings("ignore")
 
 
 def clean_loans(loans):
-    ...
+    out = loans.copy()
+    out['issue_d'] = pd.to_datetime(out['issue_d'], format='%b-%Y', errors='coerce')
+    out['term'] = out['term'].astype(str).str.extract(r'(\d+)')[0].astype(int)
+    emp = out['emp_title'].astype('string').str.lower().str.strip().replace({'rn': 'registered nurse'})
+    out['emp_title'] = emp
+    offsets = out['term'].map(lambda m: pd.DateOffset(months=int(m)))
+    try:
+        out['term_end'] = out['issue_d'] + offsets
+    except Exception:
+        out['term_end'] = out.apply(
+            lambda r: r['issue_d'] + pd.DateOffset(months=int(r['term']))
+            if pd.notna(r['issue_d']) and pd.notna(r['term']) else pd.NaT,
+            axis=1
+        )
+    return out
+
 
 
 # ---------------------------------------------------------------------
@@ -45,7 +60,25 @@ def clean_loans(loans):
 
 
 def correlations(df, pairs):
-    ...
+    idx = []
+    vals = []
+    for col1, col2 in pairs:
+        s1, s2 = df[col1], df[col2]
+        def to_num(s):
+            if pd.api.types.is_numeric_dtype(s):
+                return pd.to_numeric(s, errors='coerce')
+            s_num = pd.to_numeric(s, errors='coerce')
+            if s_num.notna().any():
+                return s_num
+            ex = s.astype(str).str.extract(r'([+-]?\d+(?:\.\d+)?)')[0]
+            return pd.to_numeric(ex, errors='coerce')
+        x, y = to_num(s1), to_num(s2)
+        m = x.notna() & y.notna()
+        r = x[m].corr(y[m])
+        idx.append(f"r_{col1}_{col2}")
+        vals.append(r if pd.notna(r) else np.nan)
+    return pd.Series(vals, index=idx, dtype=float)
+
 
 
 
